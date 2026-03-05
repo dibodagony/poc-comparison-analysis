@@ -65,6 +65,11 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('[n8n-proxy] error:', err);
-    res.status(502).json({ error: 'Proxy error', detail: err.message });
+    res.status(502).json({
+      error:  'Proxy error',
+      detail: err.message,
+      cause:  err.cause?.message || err.cause?.code || String(err.cause ?? ''),
+      target: `${N8N_ORIGIN}${((req.url || '/').replace(/^\/n8n/, '') || '/')}`,
+    });
   }
 }
