@@ -35,14 +35,17 @@ import { MOCK_RESPONSE } from '../mocks/mockResponse.js';
 
 // ─── URL helpers ─────────────────────────────────────────────────────────────
 // Dev:  route through Vite's /n8n proxy (injects API key server-side, no CORS)
-// Prod: use the absolute n8n URL directly (no proxy needed for webhooks,
-//       and X-N8N-API-KEY is sent from VITE_N8N_API_KEY in the browser)
+// Prod: route through /n8n which is handled by:
+//       - Vercel edge function (api/n8n-proxy.js) → injects N8N_API_KEY server-side
+//       - netlify.toml redirect → (legacy, no longer used)
+//
+// In both environments all calls use the same /n8n/... relative path —
+// no API key is ever exposed to the browser bundle.
 function resolveViaProxy(raw) {
   if (!raw || !raw.startsWith('http')) return raw || '';
-  if (!import.meta.env.DEV) return raw;   // prod: use absolute URL as-is
   try {
     const { pathname, search } = new URL(raw);
-    return '/n8n' + pathname + search;    // dev: /n8n/webhook/poc-comparison
+    return '/n8n' + pathname + search;    // → /n8n/webhook/poc-comparison
   } catch (_) {
     return raw;
   }
@@ -52,17 +55,11 @@ const RAW_WEBHOOK_URL    = import.meta.env.VITE_WEBHOOK_URL || 'https://n8n.just
 export const WEBHOOK_URL = resolveViaProxy(RAW_WEBHOOK_URL);
 export const USE_MOCK    = import.meta.env.VITE_USE_MOCK !== 'false';  // default true
 
-// n8n REST API base:
-//   Dev  → /n8n/api/v1  (Vite proxy injects X-N8N-API-KEY)
-//   Prod → https://n8n.justt.ai/api/v1  (browser sends X-N8N-API-KEY directly)
-const API_BASE = import.meta.env.DEV
-  ? '/n8n/api/v1'
-  : (() => { try { return new URL(RAW_WEBHOOK_URL).origin + '/api/v1'; } catch (_) { return '/api/v1'; } })();
+// n8n REST API base — always via /n8n proxy (Vite in dev, Vercel function in prod)
+const API_BASE = '/n8n/api/v1';
 
 function buildHeaders() {
   const headers = { 'Content-Type': 'application/json' };
-  const key = import.meta.env.VITE_WEBHOOK_API_KEY;
-  if (key) headers['Authorization'] = `Bearer ${key}`;
   return headers;
 }
 
@@ -71,13 +68,9 @@ const MOCK_DELAY_MS = 1500;
 // ─── Execution-API polling (same approach as n8n_v5) ────────────────────────
 
 async function fetchExecution(executionId) {
-  // In dev the Vite proxy injects X-N8N-API-KEY server-side.
-  // In prod the key comes from VITE_N8N_API_KEY (set in Netlify env vars).
-  const headers = {};
-  const apiKey = import.meta.env.VITE_N8N_API_KEY || import.meta.env.N8N_API_KEY;
-  if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
-
-  const res = await fetch(`${API_BASE}/executions/${executionId}?includeData=true`, { headers });
+  // API key is injected server-side by the proxy (Vite in dev, Vercel edge fn in prod).
+  // No client-side key needed.
+  const res = await fetch(`${API_BASE}/executions/${executionId}?includeData=true`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Failed to fetch execution ${executionId} (${res.status}): ${text || res.statusText}`);
