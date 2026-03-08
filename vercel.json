@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/n8n/:path*", "destination": "/api/n8n-proxy" },
-    { "source": "/(.*)",       "destination": "/index.html"     }
+    { "source": "/n8n/:path*", "destination": "/api/n8n-proxy?proxyPath=:path*" },
+    { "source": "/(.*)",       "destination": "/index.html" }
   ]
 }
