@@ -7,8 +7,8 @@
 //   error   → LandingScreen (error banner below form)
 //   success → DashboardScreen (tabs)
 // ============================================================
-import { useState, Component } from 'react';
-import { Loader2, AlertTriangle, RotateCcw, Sun, Moon } from 'lucide-react';
+import { useState, useEffect, useRef, Component } from 'react';
+import { Loader2, AlertTriangle, RotateCcw, Sun, Moon, CheckCircle2, Clock } from 'lucide-react';
 
 // ── Error boundary — catches React render crashes (blank-page prevention) ─────
 class ErrorBoundary extends Component {
@@ -101,32 +101,19 @@ function LandingScreen({ state, error, message, onSubmit, isDark, onToggleTheme 
         </p>
       </div>
 
-      {/* Card */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700/80
-                      rounded-2xl p-8 w-full max-w-lg shadow-lg dark:shadow-2xl">
-        {state === 'loading' ? (
+      {/* Card(s) — InputForm manages its own card layout (supports side-by-side scope panel) */}
+      {state === 'loading' ? (
+        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700/80
+                        rounded-2xl p-8 w-full max-w-lg shadow-lg dark:shadow-2xl">
           <LoadingState message={message} />
-        ) : (
-          <>
-            <InputForm onSubmit={onSubmit} isLoading={state === 'loading'} />
-
-            {/* Error banner */}
-            {state === 'error' && error && (
-              <div className="mt-5 flex items-start gap-2.5
-                              bg-red-50 dark:bg-red-950/50
-                              border border-red-200 dark:border-red-800/60
-                              rounded-xl px-4 py-3
-                              text-red-700 dark:text-red-300 text-sm">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500 dark:text-red-400" />
-                <div>
-                  <p className="font-semibold text-red-700 dark:text-red-300">Analysis failed</p>
-                  <p className="text-red-600 dark:text-red-400 mt-0.5 text-xs leading-relaxed">{error}</p>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+        </div>
+      ) : (
+        <InputForm
+          onSubmit={onSubmit}
+          isLoading={state === 'loading'}
+          analysisError={state === 'error' ? error : null}
+        />
+      )}
 
       {/* Footer */}
       <p className="mt-6 text-gray-400 dark:text-slate-600 text-xs">
@@ -137,19 +124,96 @@ function LandingScreen({ state, error, message, onSubmit, isDark, onToggleTheme 
 }
 
 // ── Loading state (inside card) ───────────────────────────────────────────────
+const STEPS = [
+  { label: 'Fetching data',          activateAt: 0  },
+  { label: 'Comparing metrics',      activateAt: 22 },
+  { label: 'Generating conclusions', activateAt: 44 },
+];
+
 function LoadingState({ message }) {
+  // elapsed seconds since mount
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // derive step states
+  const stepStates = STEPS.map((step, i) => {
+    const nextActivateAt = STEPS[i + 1]?.activateAt ?? Infinity;
+    if (elapsed < step.activateAt) return 'pending';
+    if (elapsed >= nextActivateAt)  return 'done';
+    return 'active';
+  });
+
+  // strip any trailing "(6s)" timer from the message prop
+  const heading = (message || 'Running analysis…').replace(/\s*\(\d+s?\)\s*$/, '').trim() || 'Running analysis…';
+
   return (
-    <div className="flex flex-col items-center justify-center py-10 gap-4">
-      <Loader2 size={38} className="text-[#a78bfa] animate-spin" />
-      <div className="text-center">
-        <p className="text-gray-900 dark:text-white font-semibold">
-          {message || 'Running analysis…'}
-        </p>
-        <p className="text-gray-500 dark:text-slate-400 text-xs mt-1.5 leading-relaxed">
-          Fetching Snowflake data · Processing metrics · Generating AI insights
-        </p>
+    <div className="flex flex-col items-center py-10 gap-8">
+
+      {/* Spinner */}
+      <Loader2 size={48} className="text-[#a78bfa] animate-spin" />
+
+      {/* Heading */}
+      <p className="text-gray-900 dark:text-white font-semibold text-base">
+        {heading}
+      </p>
+
+      {/* Animated step list */}
+      <div className="w-full flex flex-col gap-2">
+        {STEPS.map((step, i) => {
+          const status = stepStates[i];
+          return (
+            <div
+              key={step.label}
+              className={`
+                relative flex items-center gap-3 px-4 py-3.5 rounded-xl
+                transition-all duration-500 overflow-hidden
+                ${status === 'active'
+                  ? 'bg-[#a78bfa]/10 dark:bg-[#a78bfa]/15'
+                  : ''}
+              `}
+            >
+              {/* Left accent bar (active only) */}
+              {status === 'active' && (
+                <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-[#a78bfa]" />
+              )}
+
+              {/* Icon */}
+              <span className="shrink-0 ml-1">
+                {status === 'pending' && (
+                  <Clock size={16} className="text-gray-300 dark:text-slate-600" />
+                )}
+                {status === 'active' && (
+                  <Loader2 size={16} className="text-[#a78bfa] animate-spin" />
+                )}
+                {status === 'done' && (
+                  <CheckCircle2 size={16} className="text-[#a78bfa]/50" />
+                )}
+              </span>
+
+              {/* Label */}
+              <span className={`text-sm transition-colors duration-500 ${
+                status === 'active'  ? 'text-[#a78bfa] font-medium' :
+                status === 'done'    ? 'text-gray-400 dark:text-slate-500' :
+                                       'text-gray-300 dark:text-slate-700'
+              }`}>
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
-      <p className="text-gray-400 dark:text-slate-600 text-xs mt-1">This might take a few minutes…</p>
+
+      {/* Footer hint */}
+      <p className="text-gray-400 dark:text-slate-600 text-xs">
+        This might take a few minutes…
+      </p>
     </div>
   );
 }

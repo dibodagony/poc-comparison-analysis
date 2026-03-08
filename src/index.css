@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Indeterminate progress bar sweep (seamless, no pause) ── */
+@keyframes progress-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+.progress-bar {
+  background: linear-gradient(90deg, transparent 0%, #a78bfa 35%, #c4b5fd 55%, transparent 100%);
+  width: 40%;
+  animation: progress-sweep 1.6s linear infinite;
+}
+
 /* ── Month / date input: dark mode ── */
 .dark input[type="date"]::-webkit-calendar-picker-indicator,
 .dark input[type="month"]::-webkit-calendar-picker-indicator {

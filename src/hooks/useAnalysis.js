@@ -143,7 +143,7 @@ export function useAnalysis() {
   const [error,   setError]   = useState(null);
   const [message, setMessage] = useState('');
 
-  async function runAnalysis({ mode = 'query', merchant_id, start_date, end_date, aggregated }) {
+  async function runAnalysis({ mode = 'query', merchant_id, start_date, end_date, aggregated, scope }) {
     setState('loading');
     setData(null);
     setError(null);
@@ -159,9 +159,11 @@ export function useAnalysis() {
       }
 
       // ── Build request body ─────────────────────────────────────────────────
+      // scope is forwarded in both modes so n8n can apply the same filters
+      // on the Snowflake path (query mode) or have it available for reference.
       const body = mode === 'csv'
-        ? { mode: 'csv', merchant_id, start_date, end_date, aggregated }
-        : { mode: 'query', merchant_id, start_date, end_date };
+        ? { mode: 'csv',   merchant_id, start_date, end_date, aggregated, scope }
+        : { mode: 'query', merchant_id, start_date, end_date,             scope };
 
       // ── POST to webhook ────────────────────────────────────────────────────
       let res;

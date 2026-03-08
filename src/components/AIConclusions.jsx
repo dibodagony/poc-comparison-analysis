@@ -419,6 +419,125 @@ function EnrichmentTable({ enrichment, months }) {
   );
 }
 
+// ── Helper: strip markdown table lines from text (for deduplication) ─────────
+function stripMarkdownTables(text) {
+  if (!text) return text;
+  return text
+    .split('\n')
+    .filter(line => !line.trim().startsWith('|'))
+    .join('\n')
+    .trim();
+}
+
+// ── Markdown table parser ─────────────────────────────────────────────────────
+function parseMarkdownTable(lines) {
+  const tableLines = lines.filter(l => l.trim().startsWith('|'));
+  if (tableLines.length < 2) return null;
+
+  const parseRow = line =>
+    line.split('|').slice(1, -1).map(c => c.trim());
+
+  const sep = tableLines[1];
+  if (!sep.includes('---')) return null;
+
+  const headers = parseRow(tableLines[0]);
+  const rows = tableLines.slice(2).map(parseRow);
+  return { headers, rows };
+}
+
+// ── TextWithTables — renders text that may contain markdown tables ────────────
+// Tables are extracted and rendered as styled HTML tables (same look as PerformanceTable).
+// Non-table text is rendered through BulletList as usual.
+function TextWithTables({ text }) {
+  if (!text) return null;
+
+  const lines  = text.split('\n');
+  const segs   = [];
+  let textBuf  = [];
+  let tableBuf = [];
+  let inTable  = false;
+
+  for (const line of lines) {
+    const isTableLine = line.trim().startsWith('|');
+    if (isTableLine) {
+      if (!inTable && textBuf.length) {
+        const t = textBuf.join('\n').trim();
+        if (t) segs.push({ type: 'text', content: t });
+        textBuf = [];
+      }
+      inTable = true;
+      tableBuf.push(line);
+    } else {
+      if (inTable) {
+        segs.push({ type: 'table', lines: tableBuf });
+        tableBuf = [];
+        inTable  = false;
+      }
+      textBuf.push(line);
+    }
+  }
+  if (inTable) segs.push({ type: 'table', lines: tableBuf });
+  if (textBuf.length) {
+    const t = textBuf.join('\n').trim();
+    if (t) segs.push({ type: 'text', content: t });
+  }
+
+  return (
+    <div className="space-y-4">
+      {segs.map((seg, i) => {
+        if (seg.type === 'text') {
+          return <BulletList key={i} text={seg.content} />;
+        }
+
+        const table = parseMarkdownTable(seg.lines);
+        if (!table) {
+          return <BulletList key={i} text={seg.lines.join('\n')} />;
+        }
+
+        return (
+          <div key={i} className="overflow-x-auto rounded-xl border border-gray-200 dark:border-slate-700/50">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400 uppercase tracking-wide text-[10px]">
+                  {table.headers.map((h, j) => (
+                    <th key={j} className={`px-3 py-2.5 font-semibold ${j === 0 ? 'text-left' : 'text-right'}`}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, ri) => (
+                  <tr key={ri}
+                      className={`border-t border-gray-100 dark:border-slate-800/60 ${ri % 2 === 0 ? 'bg-gray-50/50 dark:bg-slate-900/30' : ''}`}>
+                    {row.map((cell, ci) => {
+                      const isDelta    = /^[+\-]\d+(\.\d+)?pp$/.test(cell.trim());
+                      const isPositive = isDelta && cell.trim().startsWith('+');
+                      const colorCls   = isDelta
+                        ? isPositive
+                          ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                          : 'text-red-600 dark:text-red-400 font-semibold'
+                        : ci === 0
+                          ? 'text-gray-500 dark:text-slate-400'
+                          : 'text-gray-700 dark:text-slate-300 font-semibold';
+                      return (
+                        <td key={ci}
+                            className={`px-3 py-2 ${ci === 0 ? '' : 'text-right'} ${colorCls}`}>
+                          <Inline text={cell} />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Section 5: Dimension sub-sections ────────────────────────────────────────
 function DimensionBullets({ text }) {
   if (!text) return null;
@@ -536,11 +655,11 @@ function SectionBody({ index, body, views, enrichment, months, pocPartner }) {
         </>
       )}
 
-      {/* Section 2: Performance — comparison table + bullets */}
+      {/* Section 2: Performance — comparison table + bullets (AI markdown table stripped — duplicate) */}
       {idx === 2 && (
         <>
           <PerformanceTable views={views} months={months} pocPartner={pocPartner} />
-          <BulletList text={body} />
+          <BulletList text={stripMarkdownTables(body)} />
         </>
       )}
 
@@ -549,9 +668,9 @@ function SectionBody({ index, body, views, enrichment, months, pocPartner }) {
         <DimensionBullets text={body} />
       )}
 
-      {/* Fallback for unlabelled sections */}
+      {/* Fallback for unlabelled sections (e.g. section 5 Apples-to-Apples) — tables rendered nicely */}
       {(idx < 1 || idx > 3) && (
-        <BulletList text={body} />
+        <TextWithTables text={body} />
       )}
     </div>
   );
